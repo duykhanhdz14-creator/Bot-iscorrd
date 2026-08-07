@@ -1,20 +1,14 @@
-
 const { REST, Routes } = require('discord.js');
 require('dotenv').config();
 
-// Import lệnh từ file games.js
-const txCommand = require('./games.js');
-
-const commands = [
-    txCommand.data.toJSON(),
-    // Thêm các lệnh khác nếu có
-];
+// Import tất cả lệnh từ games.js
+const commands = require('./games.js').map(cmd => cmd.data.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log('🔄 Đang xóa tất cả lệnh cũ và đăng ký lệnh mới...');
+        console.log('🔄 Đang đăng ký lệnh...');
         
         // Xóa lệnh cũ
         await rest.put(
@@ -30,10 +24,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
         );
         
         console.log(`✅ Đã đăng ký ${commands.length} lệnh!`);
-        console.log('📋 Danh sách lệnh:');
-        commands.forEach(cmd => {
-            console.log(`   /${cmd.name} - ${cmd.description}`);
-        });
+        commands.forEach(cmd => console.log(`   /${cmd.name}`));
     } catch (error) {
         console.error('❌ Lỗi:', error);
     }
