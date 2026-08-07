@@ -1,6 +1,5 @@
 const { Client, GatewayIntentBits, Events, Collection } = require('discord.js');
 const fs = require('fs');
-const path = require('path');
 require('dotenv').config();
 
 const client = new Client({
@@ -15,11 +14,14 @@ const client = new Client({
 // ===== LOAD COMMANDS =====
 client.commands = new Collection();
 
-const commandFiles = fs.readdirSync(__dirname).filter(file => file.endsWith('.js') && file !== 'discord.js' && file !== 'deploy-commands.js');
+const commandFiles = fs
+    .readdirSync(__dirname)
+    .filter(file => file.endsWith('.js') && file !== 'discord.js' && file !== 'deploy-commands.js');
 
 for (const file of commandFiles) {
     const command = require(`./${file}`);
-    if ('data' in command && 'execute' in command) {
+
+    if (command.data && command.execute) {
         client.commands.set(command.data.name, command);
         console.log(`✅ Loaded command: ${command.data.name}`);
     } else {
@@ -27,33 +29,46 @@ for (const file of commandFiles) {
     }
 }
 
-// Event khi bot sẵn sàng
-client.once(Events.ClientReady, (c) => {
-    console.log(`✅ Bot ${c.user.tag} đã sẵn sàng!`);
-    console.log(`📊 Đang hoạt động trong ${c.guilds.cache.size} server`);
-    console.log(`🎲 Đã load ${client.commands.size} lệnh`);
+// ===== BOT READY =====
+client.once(Events.ClientReady, client => {
+    console.log(`✅ Đăng nhập thành công: ${client.user.tag}`);
+    console.log(`📊 Servers: ${client.guilds.cache.size}`);
+    console.log(`🎮 Commands: ${client.commands.size}`);
 });
 
-// Xử lý interaction
-client.on(Events.InteractionCreate, async (interaction) => {
+// ===== INTERACTION =====
+client.on(Events.InteractionCreate, async interaction => {
     if (!interaction.isChatInputCommand()) return;
 
     const command = client.commands.get(interaction.commandName);
 
-    if (!command) {
-        console.error(`❌ Không tìm thấy lệnh ${interaction.commandName}`);
-        return;
-    }
+    if (!command) return;
 
     try {
         await command.execute(interaction);
-    } catch (error) {
-        console.error(`❌ Lỗi khi thực thi ${interaction.commandName}:`, error);
-        await interaction.reply({
-            content: '❌ Đã xảy ra lỗi khi thực thi lệnh!',
-            ephemeral: true
-        });
+    } catch (err) {
+        console.error(err);
+
+        if (interaction.replied || interaction.deferred) {
+            await interaction.followUp({
+                content: "❌ Có lỗi xảy ra.",
+                ephemeral: true
+            });
+        } else {
+            await interaction.reply({
+                content: "❌ Có lỗi xảy ra.",
+                ephemeral: true
+            });
+        }
     }
 });
+
+// ===== LOGIN =====
+if (!process.env.DISCORD_TOKEN) {
+    console.error("❌ Không tìm thấy DISCORD_TOKEN.");
+    process.exit(1);
+}
+
+console.log("✅ Token đã được đọc.");
 
 client.login(process.env.DISCORD_TOKEN);
