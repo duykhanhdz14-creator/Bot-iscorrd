@@ -1,33 +1,33 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Events, Collection, EmbedBuilder, SlashCommandBuilder } = require('discord.js');
+require('dotenv').config();
 
-// ===== HỆ THỐNG LƯU TRỮ DỮ LIỆU =====
+console.log('🟢 Bot đang khởi động...');
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
+
+// ===== DATA =====
 const userBalances = {};
 const COOLDOWN = new Set();
 const DAILY_REWARDS = {};
 
-// ===== HÀM HỖ TRỢ =====
-
+// ===== HELPERS =====
 function ensureUser(userId) {
     if (!userBalances[userId]) {
-        userBalances[userId] = {
-            balance: 1000,
-            totalWins: 0,
-            totalLosses: 0,
-            totalBets: 0,
-            lastGame: null,
-            totalFreeClaimed: 0,
-            freeClaimCount: 0
-        };
+        userBalances[userId] = { balance: 1000, totalWins: 0, totalLosses: 0, totalBets: 0 };
     }
     return userBalances[userId];
 }
 
 function ensureDaily(userId) {
     if (!DAILY_REWARDS[userId]) {
-        DAILY_REWARDS[userId] = {
-            lastClaim: null,
-            streak: 0
-        };
+        DAILY_REWARDS[userId] = { lastClaim: null, streak: 0 };
     }
     return DAILY_REWARDS[userId];
 }
@@ -38,588 +38,257 @@ function rollDice() {
     return { result, number };
 }
 
-function checkWin(betType, rollResult) {
-    return betType === rollResult;
-}
-
 function isDailyAvailable(lastClaim) {
     if (!lastClaim) return true;
     const now = new Date();
     const last = new Date(lastClaim);
-    const diffHours = (now - last) / (1000 * 60 * 60);
-    return diffHours >= 24;
+    return (now - last) / (1000 * 60 * 60) >= 24;
 }
 
 function getDailyReward() {
-    const min = 10000;
-    const max = 100000;
-    const reward = Math.floor(Math.random() * (max - min + 1) + min);
-    return Math.round(reward / 1000) * 1000;
+    return Math.floor(Math.random() * 90000 + 10000);
 }
 
-// ===== DANH SÁCH LỆNH =====
+// ===== LOAD COMMANDS =====
+client.commands = new Collection();
 
-module.exports = [
-    // ===== LỆNH /HUONGDAN =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('huongdan')
-            .setDescription('📖 Hướng dẫn sử dụng tất cả lệnh trong bot'),
+// ===== COMMAND: /ping =====
+client.commands.set('ping', {
+    data: new SlashCommandBuilder().setName('ping').setDescription('🏓 Kiểm tra bot'),
+    async execute(interaction) {
+        await interaction.reply('Pong! 🏓');
+    }
+});
 
-        async execute(interaction) {
-            const guideEmbed = new EmbedBuilder()
-                .setColor(0x00BFFF)
-                .setTitle('📖 HƯỚNG DẪN SỬ DỤNG BOT')
-                .setDescription('Dưới đây là tất cả lệnh và cách sử dụng:')
-                .setThumbnail(interaction.client.user.displayAvatarURL({ size: 256 }))
-                .addFields(
-                    {
-                        name: '🎁 **Lệnh nhận thưởng**',
-                        value: '```\n/free\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• Nhận tiền thưởng hàng ngày (10,000 - 100,000 VND)\n• Mỗi 24 giờ được nhận 1 lần\n• Nhận liên tục sẽ được bonus thêm\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '💳 **Lệnh kiểm tra tài khoản**',
-                        value: '```\n/tk [@user]\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• /tk - Xem số dư của bạn\n• /tk @user - Xem số dư của người khác\n• Hiển thị thống kê: thắng, thua, tỷ lệ thắng\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '🎲 **Lệnh chơi tài xỉu**',
-                        value: '```\n/tx tài <số_tiền>\n/tx xỉu <số_tiền>\n/tx help\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• /tx tài 1000 - Đặt cược 1,000 VND vào TÀI\n• /tx xỉu 500 - Đặt cược 500 VND vào XỈU\n• /tx help - Xem hướng dẫn chi tiết\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📊 Luật chơi',
-                        value: '```\n• TÀI: Xúc xắc ra 4, 5, 6 (50%)\n• XỈU: Xúc xắc ra 1, 2, 3 (50%)\n• Thắng: Nhận gấp 2 lần tiền cược\n• Thua: Mất số tiền đã cược\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '💰 **Lệnh chuyển tiền**',
-                        value: '```\n/chuyentien @user <số_tiền>\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• Chuyển tiền cho người khác\n• Ví dụ: /chuyentien @Dkhanh 50000\n• Phí giao dịch: 5%\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '🏆 **Bảng xếp hạng**',
-                        value: '```\n/top\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• Xem top 10 người giàu nhất server\n• Hiển thị số dư và thống kê\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '📖 **Lệnh hướng dẫn**',
-                        value: '```\n/huongdan\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📌 Cách dùng',
-                        value: '```\n• Hiển thị hướng dẫn tất cả lệnh\n• Thông tin cách dùng ngắn gọn\n```',
-                        inline: false
-                    },
-                    {
-                        name: '┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄┄',
-                        value: ' ',
-                        inline: false
-                    },
-                    {
-                        name: '💰 **Tiền tệ trong game**',
-                        value: '```\n• Mỗi người chơi được cấp 1,000 VND ban đầu\n• Kiếm tiền qua: /free, thắng cược\n• Xem số dư: /tk\n```',
-                        inline: false
-                    },
-                    {
-                        name: '⚠️ **Lưu ý quan trọng**',
-                        value: '```\n• Không đặt cược quá số dư hiện có\n• Không spam lệnh (cooldown 3s)\n• Nhận /free mỗi 24h để có thêm vốn\n• Streak càng cao bonus càng nhiều\n• Phí chuyển tiền: 5%\n```',
-                        inline: false
-                    },
-                    {
-                        name: '📊 **Tóm tắt nhanh**',
-                        value: '```\n🎁 /free          - Nhận thưởng hàng ngày\n💳 /tk            - Kiểm tra số dư\n🎲 /tx            - Chơi tài xỉu\n💰 /chuyentien    - Chuyển tiền\n🏆 /top           - Bảng xếp hạng\n📖 /huongdan      - Hướng dẫn sử dụng\n```',
-                        inline: false
-                    }
-                )
-                .setTimestamp()
-                .setFooter({ 
-                    text: `Yêu cầu bởi ${interaction.user.tag} | Bot version 2.0`,
-                    iconURL: interaction.user.displayAvatarURL()
-                });
-
-            await interaction.reply({ embeds: [guideEmbed] });
-            console.log(`📖 ${interaction.user.tag} đã xem /huongdan`);
-        }
-    },
-
-    // ===== LỆNH /TX (TÀI XỈU) =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('tx')
-            .setDescription('🎲 Chơi tài xỉu - Đặt cược tài hoặc xỉu')
-            .addSubcommand(subcommand =>
-                subcommand
-                    .setName('tài')
-                    .setDescription('Đặt cược TÀI')
-                    .addIntegerOption(option =>
-                        option.setName('số_tiền')
-                            .setDescription('Số tiền muốn đặt cược')
-                            .setRequired(true)
-                            .setMinValue(1)
-                    )
+// ===== COMMAND: /huongdan =====
+client.commands.set('huongdan', {
+    data: new SlashCommandBuilder().setName('huongdan').setDescription('📖 Hướng dẫn sử dụng bot'),
+    async execute(interaction) {
+        const embed = new EmbedBuilder()
+            .setColor(0x00BFFF)
+            .setTitle('📖 HƯỚNG DẪN SỬ DỤNG BOT')
+            .setDescription('Dưới đây là tất cả lệnh và cách sử dụng:')
+            .addFields(
+                { name: '🎁 /free', value: 'Nhận thưởng hàng ngày (10,000 - 100,000 VND)', inline: false },
+                { name: '💳 /tk', value: 'Kiểm tra số dư tài khoản', inline: false },
+                { name: '🎲 /tx tài <số_tiền>', value: 'Đặt cược TÀI', inline: false },
+                { name: '🎲 /tx xỉu <số_tiền>', value: 'Đặt cược XỈU', inline: false },
+                { name: '💰 /chuyentien @user <số_tiền>', value: 'Chuyển tiền cho người khác', inline: false },
+                { name: '🏆 /top', value: 'Bảng xếp hạng người giàu nhất', inline: false },
+                { name: '📖 /huongdan', value: 'Xem hướng dẫn này', inline: false }
             )
-            .addSubcommand(subcommand =>
-                subcommand
-                    .setName('xỉu')
-                    .setDescription('Đặt cược XỈU')
-                    .addIntegerOption(option =>
-                        option.setName('số_tiền')
-                            .setDescription('Số tiền muốn đặt cược')
-                            .setRequired(true)
-                            .setMinValue(1)
-                    )
+            .setTimestamp()
+            .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}` });
+        await interaction.reply({ embeds: [embed] });
+    }
+});
+
+// ===== COMMAND: /free =====
+client.commands.set('free', {
+    data: new SlashCommandBuilder().setName('free').setDescription('🎁 Nhận thưởng hàng ngày'),
+    async execute(interaction) {
+        const userId = interaction.user.id;
+        const userData = ensureUser(userId);
+        const dailyData = ensureDaily(userId);
+
+        if (!isDailyAvailable(dailyData.lastClaim)) {
+            return await interaction.reply({ content: '⏳ Bạn đã nhận thưởng hôm nay rồi! Quay lại ngày mai.', ephemeral: true });
+        }
+
+        const reward = getDailyReward();
+        userData.balance += reward;
+        dailyData.lastClaim = new Date();
+        dailyData.streak += 1;
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('🎁 NHẬN THƯỞNG THÀNH CÔNG!')
+            .addFields(
+                { name: '💰 Nhận được', value: `+${reward.toLocaleString()} VND`, inline: true },
+                { name: '🔥 Streak', value: `${dailyData.streak} ngày`, inline: true },
+                { name: '💳 Số dư mới', value: `${userData.balance.toLocaleString()} VND`, inline: false }
             )
-            .addSubcommand(subcommand =>
-                subcommand
-                    .setName('help')
-                    .setDescription('📖 Hướng dẫn chi tiết chơi tài xỉu')
-            ),
+            .setTimestamp();
+        await interaction.reply({ embeds: [embed] });
+    }
+});
 
-        async execute(interaction) {
-            const subcommand = interaction.options.getSubcommand();
-            const userId = interaction.user.id;
-            const userTag = interaction.user.tag;
-
-            if (subcommand === 'help') {
-                const helpEmbed = new EmbedBuilder()
-                    .setColor(0xFFD700)
-                    .setTitle('🎲 HƯỚNG DẪN CHƠI TÀI XỈU')
-                    .setDescription('Đặt cược vào kết quả của 1 viên xúc xắc (1-6)')
-                    .addFields(
-                        { 
-                            name: '📌 Cách chơi', 
-                            value: '```\n/tx tài <số_tiền>\n/tx xỉu <số_tiền>\n```', 
-                            inline: false 
-                        },
-                        { 
-                            name: '🎯 Luật chơi', 
-                            value: '```\n• TÀI: Xúc xắc ra 4, 5, 6 (50%)\n• XỈU: Xúc xắc ra 1, 2, 3 (50%)\n• Thắng: Nhận gấp 2 lần tiền cược\n• Thua: Mất số tiền đã cược\n```', 
-                            inline: false 
-                        },
-                        { 
-                            name: '💰 Tiền khởi tạo', 
-                            value: '```\n• Mỗi người chơi được cấp 1,000 VND\n• Thắng thua được cập nhật tự động\n```', 
-                            inline: false 
-                        },
-                        { 
-                            name: '⚠️ Lưu ý', 
-                            value: '```\n• Không được đặt cược quá số dư hiện có\n• Không spam lệnh (cooldown 3s)\n• Tỷ lệ thắng là 50-50\n```', 
-                            inline: false 
-                        }
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: 'Chúc bạn may mắn! 🍀' });
-
-                return await interaction.reply({ embeds: [helpEmbed] });
-            }
-
-            if (subcommand === 'tài' || subcommand === 'xỉu') {
-                const betType = subcommand;
-                const betAmount = interaction.options.getInteger('số_tiền');
-                
-                if (COOLDOWN.has(userId)) {
-                    const cooldownEmbed = new EmbedBuilder()
-                        .setColor(0xFF0000)
-                        .setTitle('⏳ Đợi chút!')
-                        .setDescription('Bạn đang spam quá nhanh. Vui lòng đợi **3 giây**!')
-                        .setTimestamp();
-                    return await interaction.reply({ embeds: [cooldownEmbed], ephemeral: true });
-                }
-
-                const userData = ensureUser(userId);
-
-                if (betAmount > userData.balance) {
-                    const errorEmbed = new EmbedBuilder()
-                        .setColor(0xFF0000)
-                        .setTitle('❌ Số dư không đủ!')
-                        .setDescription(`Bạn chỉ còn \`${userData.balance.toLocaleString()} VND\``)
-                        .setTimestamp();
-                    return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-                }
-
-                const rollResult = rollDice();
-                const isWin = checkWin(betType, rollResult.result);
-                
-                let winAmount = 0;
-                let newBalance = userData.balance;
-
-                if (isWin) {
-                    winAmount = betAmount;
-                    newBalance = userData.balance + betAmount;
-                    userData.totalWins++;
-                } else {
-                    newBalance = userData.balance - betAmount;
-                    userData.totalLosses++;
-                }
-
-                userData.balance = newBalance;
-                userData.totalBets++;
-                userData.lastGame = new Date();
-
-                const resultEmbed = new EmbedBuilder()
-                    .setColor(isWin ? 0x00FF00 : 0xFF0000)
-                    .setTitle(isWin ? '🎉 BẠN THẮNG!' : '😔 BẠN THUA!')
-                    .setDescription(`Bạn đã đặt cược \`${betAmount.toLocaleString()} VND\` vào **${betType.toUpperCase()}**`)
-                    .addFields(
-                        { 
-                            name: '🎲 Xúc xắc', 
-                            value: `\`\`\`\n⚪ Kết quả: ${rollResult.number} (${rollResult.result.toUpperCase()})\n\`\`\``, 
-                            inline: false 
-                        },
-                        { 
-                            name: isWin ? '💰 Tiền thưởng' : '💸 Tiền mất', 
-                            value: isWin 
-                                ? `\`+${winAmount.toLocaleString()} VND\`` 
-                                : `\`-${betAmount.toLocaleString()} VND\``, 
-                            inline: true 
-                        },
-                        { 
-                            name: '💳 Số dư mới', 
-                            value: `\`${newBalance.toLocaleString()} VND\``, 
-                            inline: true 
-                        }
-                    )
-                    .setTimestamp()
-                    .setFooter({ 
-                        text: `${isWin ? '🎊' : '😢'} ${isWin ? 'Chúc mừng bạn đã thắng!' : 'Chúc bạn may mắn lần sau!'}` 
-                    });
-
-                COOLDOWN.add(userId);
-                setTimeout(() => {
-                    COOLDOWN.delete(userId);
-                }, 3000);
-
-                await interaction.reply({ embeds: [resultEmbed] });
-                console.log(`🎲 ${userTag} đặt ${betAmount} VND vào ${betType}. Kết quả: ${rollResult.result} (${rollResult.number}). ${isWin ? 'THẮNG' : 'THUA'}`);
-            }
-        }
-    },
-
-    // ===== LỆNH /TK =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('tk')
-            .setDescription('💳 Kiểm tra số dư tài khoản và thống kê')
-            .addUserOption(option =>
-                option.setName('user')
-                    .setDescription('Xem số dư của người khác (tùy chọn)')
-                    .setRequired(false)
-            ),
-
-        async execute(interaction) {
-            const userId = interaction.options.getUser('user')?.id || interaction.user.id;
-            const targetUser = interaction.options.getUser('user') || interaction.user;
-            
-            const userData = ensureUser(userId);
-            
-            const balanceEmbed = new EmbedBuilder()
-                .setColor(0x00FF00)
-                .setTitle(`💳 Số dư của ${targetUser.username}`)
-                .setThumbnail(targetUser.displayAvatarURL({ size: 128 }))
-                .addFields(
-                    { name: '💰 Số dư hiện tại', value: `\`${userData.balance.toLocaleString()} VND\``, inline: true },
-                    { name: '🏆 Tổng thắng', value: `\`${userData.totalWins}\` lần`, inline: true },
-                    { name: '💔 Tổng thua', value: `\`${userData.totalLosses}\` lần`, inline: true },
-                    { name: '🎲 Tổng cược', value: `\`${userData.totalBets}\` lần`, inline: true },
-                    { name: '📊 Tỷ lệ thắng', value: userData.totalBets > 0 
-                        ? `\`${((userData.totalWins / userData.totalBets) * 100).toFixed(1)}%\`` 
-                        : '`Chưa có dữ liệu`', 
-                        inline: true },
-                    { name: '🎁 Tổng tiền nhận free', value: `\`${userData.totalFreeClaimed.toLocaleString()} VND\``, inline: true }
-                )
-                .setTimestamp()
-                .setFooter({ text: `Yêu cầu bởi ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() });
-
-            await interaction.reply({ embeds: [balanceEmbed] });
-        }
-    },
-
-    // ===== LỆNH /FREE =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('free')
-            .setDescription('🎁 Nhận tiền thưởng hàng ngày (10,000 - 100,000 VND)'),
-
-        async execute(interaction) {
-            const userId = interaction.user.id;
-            const userTag = interaction.user.tag;
-
-            const userData = ensureUser(userId);
-            const dailyData = ensureDaily(userId);
-
-            if (!isDailyAvailable(dailyData.lastClaim)) {
-                const lastClaim = new Date(dailyData.lastClaim);
-                const now = new Date();
-                const diffMs = 24 * 60 * 60 * 1000 - (now - lastClaim);
-                const hoursLeft = Math.floor(diffMs / (1000 * 60 * 60));
-                const minutesLeft = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                const waitEmbed = new EmbedBuilder()
-                    .setColor(0xFF6600)
-                    .setTitle('⏳ Đã nhận thưởng hôm nay!')
-                    .setDescription(`Bạn đã nhận thưởng rồi. Vui lòng quay lại sau:`)
-                    .addFields(
-                        { name: '⏰ Thời gian còn lại', value: `\`${hoursLeft} giờ ${minutesLeft} phút\``, inline: true },
-                        { name: '📅 Ngày nhận gần nhất', value: `\`${lastClaim.toLocaleString('vi-VN')}\``, inline: true }
-                    )
-                    .setTimestamp()
-                    .setFooter({ text: `Hãy quay lại vào ngày mai! 🌅` });
-
-                return await interaction.reply({ embeds: [waitEmbed], ephemeral: true });
-            }
-
-            const reward = getDailyReward();
-            const bonusMultiplier = 1 + Math.floor(dailyData.streak / 5) * 0.1;
-            const finalReward = Math.round(reward * bonusMultiplier);
-
-            userData.balance += finalReward;
-            userData.totalFreeClaimed += finalReward;
-            userData.freeClaimCount += 1;
-            
-            dailyData.lastClaim = new Date();
-            dailyData.streak += 1;
-
-            const rewardEmbed = new EmbedBuilder()
-                .setColor(0xFFD700)
-                .setTitle('🎁 NHẬN THƯỞNG HÀNG NGÀY THÀNH CÔNG!')
-                .setDescription(`Chúc mừng bạn đã nhận được tiền thưởng!`)
-                .addFields(
-                    { 
-                        name: '💰 Số tiền nhận được', 
-                        value: `\`+${finalReward.toLocaleString()} VND\``, 
-                        inline: true 
-                    },
-                    { 
-                        name: '🎯 Bonus nhân đôi', 
-                        value: `\`x${bonusMultiplier.toFixed(1)}\``, 
-                        inline: true 
-                    },
-                    { 
-                        name: '🔥 Streak hiện tại', 
-                        value: `\`${dailyData.streak} ngày\``, 
-                        inline: true 
-                    },
-                    { 
-                        name: '💳 Số dư mới', 
-                        value: `\`${userData.balance.toLocaleString()} VND\``, 
-                        inline: false 
-                    }
-                )
-                .setTimestamp()
-                .setFooter({ 
-                    text: `🎊 Chúc mừng bạn đã có ${dailyData.streak} ngày nhận thưởng liên tục!`,
-                    iconURL: interaction.user.displayAvatarURL()
-                });
-
-            if (dailyData.streak === 7) {
-                rewardEmbed.addFields({
-                    name: '🌟 THÀNH TỰU ĐẶC BIỆT!',
-                    value: 'Bạn đã đạt **7 ngày liên tục** nhận thưởng! Hãy tiếp tục duy trì nhé! 🎉',
-                    inline: false
-                });
-            }
-
-            await interaction.reply({ embeds: [rewardEmbed] });
-            console.log(`🎁 ${userTag} đã nhận ${finalReward.toLocaleString()} VND từ /free (Streak: ${dailyData.streak} ngày)`);
-        }
-    },
-
-    // ===== LỆNH /CHUYENTIEN =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('chuyentien')
-            .setDescription('💰 Chuyển tiền cho người khác')
-            .addUserOption(option =>
-                option.setName('nguoi_nhan')
-                    .setDescription('Người nhận tiền')
-                    .setRequired(true)
+// ===== COMMAND: /tk =====
+client.commands.set('tk', {
+    data: new SlashCommandBuilder()
+        .setName('tk')
+        .setDescription('💳 Kiểm tra số dư')
+        .addUserOption(opt => opt.setName('user').setDescription('Người cần xem').setRequired(false)),
+    async execute(interaction) {
+        const target = interaction.options.getUser('user') || interaction.user;
+        const data = ensureUser(target.id);
+        const embed = new EmbedBuilder()
+            .setColor(0x00FF00)
+            .setTitle(`💳 Số dư của ${target.username}`)
+            .addFields(
+                { name: '💰 Số dư', value: `${data.balance.toLocaleString()} VND`, inline: true },
+                { name: '🏆 Thắng', value: `${data.totalWins} lần`, inline: true },
+                { name: '💔 Thua', value: `${data.totalLosses} lần`, inline: true }
             )
-            .addIntegerOption(option =>
-                option.setName('số_tiền')
-                    .setDescription('Số tiền muốn chuyển')
-                    .setRequired(true)
-                    .setMinValue(1)
-            ),
+            .setTimestamp();
+        await interaction.reply({ embeds: [embed] });
+    }
+});
 
-        async execute(interaction) {
-            const senderId = interaction.user.id;
-            const senderTag = interaction.user.tag;
-            const receiver = interaction.options.getUser('nguoi_nhan');
-            const amount = interaction.options.getInteger('số_tiền');
+// ===== COMMAND: /tx =====
+client.commands.set('tx', {
+    data: new SlashCommandBuilder()
+        .setName('tx')
+        .setDescription('🎲 Chơi tài xỉu')
+        .addSubcommand(sub => sub.setName('tài').setDescription('Đặt TÀI').addIntegerOption(opt => opt.setName('số_tiền').setDescription('Số tiền cược').setRequired(true).setMinValue(1)))
+        .addSubcommand(sub => sub.setName('xỉu').setDescription('Đặt XỈU').addIntegerOption(opt => opt.setName('số_tiền').setDescription('Số tiền cược').setRequired(true).setMinValue(1))),
+    async execute(interaction) {
+        const sub = interaction.options.getSubcommand();
+        const userId = interaction.user.id;
+        const userData = ensureUser(userId);
+        const betAmount = interaction.options.getInteger('số_tiền');
 
-            // Không cho chuyển cho chính mình
-            if (senderId === receiver.id) {
-                return await interaction.reply({
-                    content: '❌ Bạn không thể chuyển tiền cho chính mình!',
-                    ephemeral: true
-                });
-            }
-
-            // Kiểm tra bot
-            if (receiver.bot) {
-                return await interaction.reply({
-                    content: '❌ Bạn không thể chuyển tiền cho bot!',
-                    ephemeral: true
-                });
-            }
-
-            const senderData = ensureUser(senderId);
-            const receiverData = ensureUser(receiver.id);
-
-            // Kiểm tra số dư
-            if (amount > senderData.balance) {
-                const errorEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle('❌ Số dư không đủ!')
-                    .setDescription(`Bạn chỉ có \`${senderData.balance.toLocaleString()} VND\``)
-                    .setTimestamp();
-                return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-            }
-
-            // Tính phí 5%
-            const fee = Math.round(amount * 0.05);
-            const totalDeduct = amount + fee;
-            const receiverAmount = amount;
-
-            // Kiểm tra đủ tiền sau khi trừ phí
-            if (totalDeduct > senderData.balance) {
-                const errorEmbed = new EmbedBuilder()
-                    .setColor(0xFF0000)
-                    .setTitle('❌ Không đủ tiền để trả phí!')
-                    .setDescription(`Phí giao dịch: \`${fee.toLocaleString()} VND\` (5%)\nCần tổng cộng: \`${totalDeduct.toLocaleString()} VND\``)
-                    .setTimestamp();
-                return await interaction.reply({ embeds: [errorEmbed], ephemeral: true });
-            }
-
-            // Thực hiện chuyển tiền
-            senderData.balance -= totalDeduct;
-            receiverData.balance += receiverAmount;
-
-            const transferEmbed = new EmbedBuilder()
-                .setColor(0x00BFFF)
-                .setTitle('💰 CHUYỂN TIỀN THÀNH CÔNG!')
-                .setDescription(`Đã chuyển tiền cho **${receiver.username}**`)
-                .setThumbnail(receiver.displayAvatarURL({ size: 128 }))
-                .addFields(
-                    { name: '👤 Người gửi', value: senderTag, inline: true },
-                    { name: '👤 Người nhận', value: receiver.username, inline: true },
-                    { name: '💵 Số tiền chuyển', value: `\`${receiverAmount.toLocaleString()} VND\``, inline: true },
-                    { name: '💸 Phí giao dịch (5%)', value: `\`${fee.toLocaleString()} VND\``, inline: true },
-                    { name: '📉 Tổng trừ', value: `\`${totalDeduct.toLocaleString()} VND\``, inline: true },
-                    { name: '💰 Số dư của bạn', value: `\`${senderData.balance.toLocaleString()} VND\``, inline: true }
-                )
-                .setTimestamp()
-                .setFooter({ text: `Giao dịch được thực hiện bởi ${senderTag}`, iconURL: interaction.user.displayAvatarURL() });
-
-            await interaction.reply({ embeds: [transferEmbed] });
-            console.log(`💰 ${senderTag} đã chuyển ${amount} VND cho ${receiver.username}`);
+        if (COOLDOWN.has(userId)) {
+            return await interaction.reply({ content: '⏳ Đợi 3 giây!', ephemeral: true });
         }
-    },
 
-    // ===== LỆNH /TOP =====
-    {
-        data: new SlashCommandBuilder()
-            .setName('top')
-            .setDescription('🏆 Bảng xếp hạng người giàu nhất server'),
+        if (betAmount > userData.balance) {
+            return await interaction.reply({ content: `❌ Không đủ tiền! Bạn có ${userData.balance.toLocaleString()} VND`, ephemeral: true });
+        }
 
-        async execute(interaction) {
-            // Lấy danh sách người chơi và sắp xếp theo số dư
-            const sortedUsers = Object.entries(userBalances)
-                .map(([userId, data]) => ({
-                    userId,
-                    ...data
-                }))
-                .sort((a, b) => b.balance - a.balance)
-                .slice(0, 10);
+        const result = rollDice();
+        const isWin = sub === result.result;
+        const winAmount = isWin ? betAmount : -betAmount;
+        userData.balance += winAmount;
+        if (isWin) userData.totalWins++;
+        else userData.totalLosses++;
+        userData.totalBets++;
 
-            if (sortedUsers.length === 0) {
-                return await interaction.reply({
-                    content: '📊 Chưa có dữ liệu người chơi!',
-                    ephemeral: true
-                });
-            }
+        COOLDOWN.add(userId);
+        setTimeout(() => COOLDOWN.delete(userId), 3000);
 
-            // Lấy thông tin người dùng từ cache
-            const topEmbed = new EmbedBuilder()
-                .setColor(0xFFD700)
-                .setTitle('🏆 BẢNG XẾP HẠNG NGƯỜI GIÀU NHẤT')
-                .setDescription('Top 10 người chơi có số dư cao nhất')
-                .setTimestamp();
+        const embed = new EmbedBuilder()
+            .setColor(isWin ? 0x00FF00 : 0xFF0000)
+            .setTitle(isWin ? '🎉 BẠN THẮNG!' : '😔 BẠN THUA!')
+            .addFields(
+                { name: '🎲 Kết quả', value: `${result.number} (${result.result.toUpperCase()})`, inline: true },
+                { name: '💰 Kết quả', value: isWin ? `+${betAmount.toLocaleString()} VND` : `-${betAmount.toLocaleString()} VND`, inline: true },
+                { name: '💳 Số dư mới', value: `${userData.balance.toLocaleString()} VND`, inline: false }
+            )
+            .setTimestamp();
+        await interaction.reply({ embeds: [embed] });
+    }
+});
 
-            let rank = 1;
-            for (const user of sortedUsers) {
-                let userTag = 'Unknown User';
-                try {
-                    const member = await interaction.guild.members.fetch(user.userId);
-                    userTag = member.user.username;
-                } catch (error) {
-                    // Nếu không tìm thấy, dùng ID
-                }
+// ===== COMMAND: /chuyentien =====
+client.commands.set('chuyentien', {
+    data: new SlashCommandBuilder()
+        .setName('chuyentien')
+        .setDescription('💰 Chuyển tiền cho người khác')
+        .addUserOption(opt => opt.setName('nguoi_nhan').setDescription('Người nhận').setRequired(true))
+        .addIntegerOption(opt => opt.setName('số_tiền').setDescription('Số tiền').setRequired(true).setMinValue(1)),
+    async execute(interaction) {
+        const senderId = interaction.user.id;
+        const receiver = interaction.options.getUser('nguoi_nhan');
+        const amount = interaction.options.getInteger('số_tiền');
 
+        if (senderId === receiver.id) {
+            return await interaction.reply({ content: '❌ Không thể chuyển cho chính mình!', ephemeral: true });
+        }
+
+        if (receiver.bot) {
+            return await interaction.reply({ content: '❌ Không thể chuyển cho bot!', ephemeral: true });
+        }
+
+        const sender = ensureUser(senderId);
+        const receiverData = ensureUser(receiver.id);
+
+        const fee = Math.round(amount * 0.05);
+        const total = amount + fee;
+
+        if (total > sender.balance) {
+            return await interaction.reply({ content: `❌ Không đủ tiền! Cần ${total.toLocaleString()} VND (gồm phí 5%)`, ephemeral: true });
+        }
+
+        sender.balance -= total;
+        receiverData.balance += amount;
+
+        const embed = new EmbedBuilder()
+            .setColor(0x00BFFF)
+            .setTitle('💰 CHUYỂN TIỀN THÀNH CÔNG!')
+            .addFields(
+                { name: '👤 Người nhận', value: receiver.username, inline: true },
+                { name: '💵 Số tiền', value: `${amount.toLocaleString()} VND`, inline: true },
+                { name: '💸 Phí (5%)', value: `${fee.toLocaleString()} VND`, inline: true },
+                { name: '💳 Số dư của bạn', value: `${sender.balance.toLocaleString()} VND`, inline: false }
+            )
+            .setTimestamp();
+        await interaction.reply({ embeds: [embed] });
+    }
+});
+
+// ===== COMMAND: /top =====
+client.commands.set('top', {
+    data: new SlashCommandBuilder().setName('top').setDescription('🏆 Bảng xếp hạng người giàu nhất'),
+    async execute(interaction) {
+        const sorted = Object.entries(userBalances)
+            .sort((a, b) => b[1].balance - a[1].balance)
+            .slice(0, 10);
+
+        if (sorted.length === 0) {
+            return await interaction.reply('📊 Chưa có dữ liệu!');
+        }
+
+        const embed = new EmbedBuilder()
+            .setColor(0xFFD700)
+            .setTitle('🏆 BẢNG XẾP HẠNG NGƯỜI GIÀU NHẤT');
+
+        let rank = 1;
+        for (const [userId, data] of sorted) {
+            try {
+                const member = await interaction.guild.members.fetch(userId);
                 const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `${rank}.`;
-                topEmbed.addFields({
-                    name: `${medal} ${userTag}`,
-                    value: `💰 \`${user.balance.toLocaleString()} VND\` | 🏆 \`${user.totalWins}\` thắng | 📊 \`${user.totalBets > 0 ? ((user.totalWins / user.totalBets) * 100).toFixed(1) : 0}%\` tỷ lệ thắng`,
+                embed.addFields({
+                    name: `${medal} ${member.user.username}`,
+                    value: `💰 ${data.balance.toLocaleString()} VND | 🏆 ${data.totalWins} thắng | 📊 ${data.totalBets > 0 ? ((data.totalWins/data.totalBets)*100).toFixed(1) : 0}%`,
                     inline: false
                 });
                 rank++;
+            } catch {
+                // Bỏ qua nếu không tìm thấy user
             }
-
-            await interaction.reply({ embeds: [topEmbed] });
-            console.log(`🏆 ${interaction.user.tag} đã xem bảng xếp hạng`);
         }
+
+        await interaction.reply({ embeds: [embed] });
     }
-];
+});
+
+// ===== BOT READY =====
+client.once(Events.ClientReady, client => {
+    console.log(`✅ Đăng nhập thành công: ${client.user.tag}`);
+    console.log(`📊 Servers: ${client.guilds.cache.size}`);
+    console.log(`🎮 Commands: ${client.commands.size}`);
+    console.log(`📋 Commands list: ${client.commands.map(c => '/' + c.data.name).join(', ')}`);
+});
+
+// ===== INTERACTIONS =====
+client.on(Events.InteractionCreate, async interaction => {
+    if (!interaction.isChatInputCommand()) return;
+    const command = client.commands.get(interaction.commandName);
+    if (!command) return;
+    try {
+        await command.execute(interaction);
+    } catch (err) {
+        console.error('❌ Lỗi:', err);
+        await interaction.reply({ content: '❌ Có lỗi xảy ra.', ephemeral: true }).catch(() => {});
+    }
+});
+
+// ===== LOGIN =====
+if (!process.env.DISCORD_TOKEN) {
+    console.error("❌ Không tìm thấy DISCORD_TOKEN");
+    process.exit(1);
+}
+
+console.log("✅ Đang đăng nhập...");
+client.login(process.env.DISCORD_TOKEN);
