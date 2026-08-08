@@ -1,12 +1,12 @@
+cat > package.json << 'EOF'
 {
-  "name": "bot-iscord",
+  "name": "bot-discord",
   "version": "2.0.0",
   "description": "Discord bot with casino games",
   "main": "discord.js",
   "scripts": {
     "start": "node discord.js",
-    "deploy": "node deploy-commands.js",
-    "dev": "nodemon discord.js"
+    "deploy": "node deploy-commands.js"
   },
   "dependencies": {
     "discord.js": "^14.14.1",
@@ -16,6 +16,7 @@
     "nodemon": "^3.0.1"
   },
   "engines": {
-    "node": "20.x"
+    "node": "19.x"
   }
 }
+EOF
